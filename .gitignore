@@ -1,0 +1,7 @@
+# Excel - no subir al repositorio (se convierte localmente con convert_data.py)
+*.xlsx
+*.xls
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
