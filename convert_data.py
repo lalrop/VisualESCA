@@ -20,13 +20,14 @@ EXCEL_FILE = Path(__file__).parent / "Pre postulacion.xlsx"
 JSON_FILE  = Path(__file__).parent / "data.json"
 
 COLUMN_MAP = {
-    "Instrumento":                 "instrumento",
-    "Codigo":                      "codigo",
-    "Mes ejecucion":               "mes",
-    "563_Base_Imponible":          "base_imponible",
+    "Instrumento":                   "instrumento",
+    "Codigo":                        "codigo",
+    "Nombre proyecto":               "nombre",
+    "Mes ejecucion":                 "mes",
+    "563_Base_Imponible":            "base_imponible",
     "Beneficio/perdida del periodo": "beneficio_perdida",
-    "Ticket medio mensual":        "ticket_medio",
-    "Margen operativo":            "margen_operativo",
+    "Ticket medio mensual":          "ticket_medio",
+    "Margen operativo":              "margen_operativo",
 }
 
 def clean(value):
