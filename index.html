@@ -549,7 +549,11 @@ function render() {
     .call(d3.axisLeft(y).ticks(6).tickSize(-width).tickFormat(''));
 
   // Axes
-  const xTicks = d3.range(xDomain[0], xDomain[1]+1).filter((v,i,a) => a.length <= 30 || i % 2 === 0);
+  // Un tick por cada mes consecutivo del dominio; se adelgaza solo si no caben
+  const allMonths = d3.range(xDomain[0], xDomain[1]+1);
+  const maxTicks = Math.max(2, Math.floor(width / 34));
+  const tickStep = Math.max(1, Math.ceil(allMonths.length / maxTicks));
+  const xTicks = allMonths.filter((v,i) => i % tickStep === 0);
   g.append('g').attr('class','axis')
     .attr('transform', `translate(0,${height})`)
     .call(d3.axisBottom(x).tickValues(xTicks).tickFormat(d => d > 0 ? `+${d}` : d));
@@ -601,8 +605,21 @@ function render() {
 
   const colorScale = d3.scaleOrdinal().domain(codes).range(COLORS);
 
+  // Rellena los meses ausentes de una serie con registros nulos,
+  // para que la línea se corte en lugar de interpolar sobre el hueco.
+  function fillGaps(rows) {
+    const sorted = rows.slice().sort((a,b) => a.mes - b.mes);
+    const byMes = new Map(sorted.map(d => [d.mes, d]));
+    return d3.range(sorted[0].mes, sorted[sorted.length-1].mes + 1)
+      .map(m => byMes.get(m) || {
+        codigo: sorted[0].codigo, mes: m,
+        base_imponible: null, beneficio_perdida: null,
+        ticket_medio: null, margen_operativo: null
+      });
+  }
+
   codes.forEach((code, i) => {
-    const series = grouped.get(code).sort((a,b) => a.mes - b.mes);
+    const series = fillGaps(grouped.get(code));
     const color = colorScale(code);
 
     g.append('path')
