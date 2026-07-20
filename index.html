@@ -439,9 +439,6 @@
     <label>Métrica</label>
     <div class="metric-buttons" id="metric-buttons">
       <button class="metric-btn active" data-key="base_imponible">Ventas</button>
-      <button class="metric-btn" data-key="ventas_12m">Ventas 12M móvil</button>
-      <button class="metric-btn" data-key="indice_100">Índice (base 100)</button>
-      <button class="metric-btn" data-key="mom">Crecimiento MoM</button>
       <button class="metric-btn" data-key="clientes">Clientes estimados</button>
       <button class="metric-btn" data-key="beneficio_perdida">Resultado Operativo</button>
       <button class="metric-btn" data-key="ticket_medio">Ticket Medio</button>
@@ -489,9 +486,6 @@ let state = {
 // fmt: clp | pct | idx | num   ·   clip: recorta outliers extremos al 5–95 pct
 const metricConfig = {
   base_imponible:    { label: 'Ventas mensuales',        fmt: 'clp', clip: false },
-  ventas_12m:        { label: 'Ventas 12 meses móvil',   fmt: 'clp', clip: false, ref: null },
-  indice_100:        { label: 'Índice de Ventas (base 100 = promedio pre-postulación)', fmt: 'idx', clip: true, ref: 100 },
-  mom:               { label: 'Crecimiento mensual (MoM %)', fmt: 'pct', clip: true, ref: 0 },
   clientes:          { label: 'Clientes estimados por mes', fmt: 'num', clip: false },
   beneficio_perdida: { label: 'Resultado Operativo del Periodo', fmt: 'clp', clip: false },
   ticket_medio:      { label: 'Ticket Medio Mensual',    fmt: 'clp', clip: false },
@@ -500,9 +494,6 @@ const metricConfig = {
 
 const metricHints = {
   base_imponible:    'Ventas netas declaradas mes a mes.',
-  ventas_12m:        'Suma móvil de los últimos 12 meses: elimina la estacionalidad y muestra la tendencia real de escalamiento.',
-  indice_100:        'Ventas de cada mes como % del promedio mensual previo a la postulación. 100 = mismo nivel; >100 = creció. Permite comparar proyectos de tamaños muy distintos.',
-  mom:               'Variación porcentual de las ventas respecto del mes anterior.',
   clientes:          'Ventas ÷ ticket medio: número aproximado de clientes atendidos en el mes.',
   beneficio_perdida: 'Resultado operativo (utilidad o pérdida) del periodo.',
   ticket_medio:      'Venta promedio por cliente en el mes.',
@@ -590,45 +581,14 @@ function realMonths(minM, maxM) {
 // ── DERIVADOS ──
 // Calcula, por proyecto, las métricas derivadas y limpia el margen ruidoso.
 function augment(data) {
-  const byCode = d3.group(data, d => d.codigo);
-  byCode.forEach((rows) => {
-    const sorted = rows.slice().sort((a, b) => a.mes - b.mes);
+  data.forEach(r => {
+    // Clientes estimados
+    r.clientes = r.ticket_medio > 0 ? r.base_imponible / r.ticket_medio : null;
 
-    // Promedio de ventas previo a la postulación (base del índice 100)
-    let preRows = sorted.filter(r => r.mes >= -12 && r.mes < 0 && r.base_imponible > 0);
-    if (!preRows.length) preRows = sorted.filter(r => r.mes < 0 && r.base_imponible > 0);
-    const preMean = preRows.length ? d3.mean(preRows, r => r.base_imponible) : null;
-
-    // Secuencia continua de meses (sin el 0) para media móvil y MoM
-    const minM = sorted[0].mes, maxM = sorted[sorted.length - 1].mes;
-    const months = realMonths(minM, maxM);
-    const map = new Map(sorted.map(r => [r.mes, r]));
-    const seq = months.map(m => ({ rec: map.get(m) || null, v: (map.get(m) ? map.get(m).base_imponible : 0) || 0 }));
-
-    seq.forEach((pt, i) => {
-      const r = pt.rec;
-      if (!r) return;
-
-      // Media móvil 12 meses
-      let s = 0;
-      for (let k = Math.max(0, i - 11); k <= i; k++) s += seq[k].v;
-      r.ventas_12m = s;
-
-      // Índice base 100
-      r.indice_100 = (preMean && preMean > 0) ? (r.base_imponible / preMean * 100) : null;
-
-      // Clientes estimados
-      r.clientes = r.ticket_medio > 0 ? r.base_imponible / r.ticket_medio : null;
-
-      // Crecimiento mensual
-      const prev = i > 0 ? seq[i - 1] : null;
-      r.mom = (prev && prev.v > 0) ? (r.base_imponible - prev.v) / prev.v : null;
-
-      // Limpieza del margen: sin ventas materiales o valores absurdos → nulo
-      if (!(r.base_imponible >= 50000) || r.margen_operativo < -3 || r.margen_operativo > 1.05) {
-        r.margen_operativo = null;
-      }
-    });
+    // Limpieza del margen: sin ventas materiales o valores absurdos → nulo
+    if (!(r.base_imponible >= 50000) || r.margen_operativo < -3 || r.margen_operativo > 1.05) {
+      r.margen_operativo = null;
+    }
   });
 }
 
@@ -647,7 +607,6 @@ function renderKPIs(filtered) {
   const delta = (preMean && preMean > 0 && postMean != null) ? (postMean - preMean) / preMean : null;
   const margRows = filtered.filter(d => d.margen_operativo != null);
   const margMedian = margRows.length ? d3.median(margRows, d => d.margen_operativo) : null;
-  const mesesAct = new Set(withSales.map(d => d.mes)).size;
 
   const nProj = new Set(filtered.map(d => d.codigo)).size;
   const scope = nProj > 1 ? `promedio de ${nProj} proyectos` : 'proyecto';
@@ -659,8 +618,7 @@ function renderKPIs(filtered) {
     { label: 'Variación post vs pre', value: delta == null ? '—' : (delta > 0 ? '+' : '') + (delta * 100).toFixed(0) + '%',
       sub: 'Cambio en ventas promedio', cls: delta == null ? '' : (delta >= 0 ? 'pos' : 'neg') },
     { label: 'Margen operativo mediano', value: margMedian == null ? '—' : (margMedian * 100).toFixed(0) + '%',
-      sub: 'Meses con ventas materiales', cls: margMedian == null ? '' : (margMedian >= 0 ? 'pos' : 'neg') },
-    { label: 'Meses con actividad', value: mesesAct.toString(), sub: 'Meses con ventas > 0' }
+      sub: 'Meses con ventas materiales', cls: margMedian == null ? '' : (margMedian >= 0 ? 'pos' : 'neg') }
   ];
 
   cards.forEach(c => {
@@ -818,7 +776,7 @@ function render() {
       if (m === 0) continue;
       out.push(byMes.get(m) || { codigo: sorted[0].codigo, mes: m,
         base_imponible: null, beneficio_perdida: null, ticket_medio: null,
-        margen_operativo: null, ventas_12m: null, indice_100: null, clientes: null, mom: null });
+        margen_operativo: null, clientes: null });
     }
     return out;
   }
